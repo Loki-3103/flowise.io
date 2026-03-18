@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowise — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">flowise</div>
+      <div class="logo-sub">Workflow System</div>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="sidebar-avatar"></div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-user-name"></div>
+          <div class="sidebar-user-role" id="sidebar-user-role"></div>
+        </div>
+        <button class="logout-btn" onclick="logout()" title="Logout">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <span class="topbar-title" id="page-title">Dashboard</span>
+      <div class="topbar-actions">
+        <div style="position:relative" id="notif-wrap">
+          <button class="notif-btn" id="notif-btn" onclick="toggleNotifPanel()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <div id="alert-area"></div>
+
+      <!-- Stats Row -->
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value" id="stat-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" id="stat-active">—</div></div>
+        <div class="stat-card"><div class="stat-label">Accepted</div><div class="stat-value" id="stat-accepted">—</div></div>
+        <div class="stat-card"><div class="stat-label">Rejected</div><div class="stat-value" id="stat-rejected">—</div></div>
+      </div>
+
+      <!-- Submit Form Section -->
+      <div class="card mb-20" id="submit-section">
+        <div class="card-header">
+          <div>
+            <div class="card-title">New Expense Request</div>
+            <div class="card-subtitle">Submit a new workflow execution</div>
+          </div>
+        </div>
+        <div id="submit-alert"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Workflow</label>
+            <select class="form-control" id="workflow-select" onchange="loadSchema()">
+              <option value="">Select workflow...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Request Title</label>
+            <input type="text" class="form-control" id="req-title" placeholder="e.g. Q4 Conference Travel">
+          </div>
+        </div>
+        <div id="dynamic-fields"></div>
+        <button class="btn btn-primary" onclick="submitRequest()" id="submit-btn">Submit Request</button>
+      </div>
+
+      <!-- My Requests -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">My Requests</div>
+            <div class="card-subtitle">Track status of your submitted workflows</div>
+          </div>
+          <div class="flex-gap">
+            <select class="form-control" style="width:130px" id="status-filter" onchange="loadExecutions()">
+              <option value="">All status</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="accepted">Accepted</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+        </div>
+        <div id="executions-table"><div class="loading-overlay"><span class="spinner"></span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/utils.js"></script>
+<script>
+const user = requireAuth(['user', 'admin', 'developer']);
+if (user) {
+  initSidebar('dashboard');
+  loadNotifCount();
+  loadWorkflows();
+  loadExecutions();
+  loadStats();
+}
+
+async function loadWorkflows() {
+  const data = await apiFetch('/workflow/list');
+  const sel = document.getElementById('workflow-select');
+  (data || []).forEach(w => {
+    const opt = document.createElement('option');
+    opt.value = w.id;
+    opt.textContent = w.name;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadSchema() {
+  const wid = document.getElementById('workflow-select').value;
+  const container = document.getElementById('dynamic-fields');
+  if (!wid) { container.innerHTML = ''; return; }
+  const wf = await apiFetch(`/workflow/${wid}`);
+  const schema = wf.schema || [];
+  container.innerHTML = schema.length ? `<div class="form-row">${schema.map(f => {
+    const id = `field-${f.field_name}`;
+    let input = '';
+    if (f.field_type === 'dropdown' && f.allowed_values) {
+      const opts = f.allowed_values.split(',').map(v => `<option value="${v.trim()}">${v.trim()}</option>`).join('');
+      input = `<select class="form-control" id="${id}"><option value="">Select...</option>${opts}</select>`;
+    } else if (f.field_type === 'boolean') {
+      input = `<select class="form-control" id="${id}"><option value="">Select...</option><option value="true">True</option><option value="false">False</option></select>`;
+    } else {
+      const type = f.field_type === 'number' ? 'number' : 'text';
+      input = `<input type="${type}" class="form-control" id="${id}" placeholder="${f.field_name}">`;
+    }
+    return `<div class="form-group"><label class="form-label">${f.field_name}${f.is_required ? ' *' : ''}</label>${input}</div>`;
+  }).join('')}</div>` : '<p class="text-muted">No input fields defined for this workflow.</p>';
+}
+
+async function submitRequest() {
+  const wid = document.getElementById('workflow-select').value;
+  const title = document.getElementById('req-title').value.trim();
+  const btn = document.getElementById('submit-btn');
+
+  if (!wid) { showAlert('submit-alert', 'Please select a workflow.'); return; }
+  if (!title) { showAlert('submit-alert', 'Please enter a request title.'); return; }
+
+  const wf = await apiFetch(`/workflow/${wid}`);
+  const inputs = {};
+  (wf.schema || []).forEach(f => {
+    const el = document.getElementById(`field-${f.field_name}`);
+    if (el) inputs[f.field_name] = el.value;
+  });
+
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    await apiFetch('/execution/execute', {
+      method: 'POST',
+      body: JSON.stringify({ workflow_id: parseInt(wid), title, inputs })
+    });
+    showAlert('submit-alert', 'Request submitted successfully.', 'success');
+    document.getElementById('req-title').value = '';
+    document.getElementById('workflow-select').value = '';
+    document.getElementById('dynamic-fields').innerHTML = '';
+    loadExecutions();
+    loadStats();
+  } catch (e) {
+    showAlert('submit-alert', e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit Request';
+  }
+}
+
+async function loadStats() {
+  const data = await apiFetch('/execution/list');
+  const execs = data || [];
+  document.getElementById('stat-total').textContent = execs.length;
+  document.getElementById('stat-active').textContent = execs.filter(e => e.status === 'active').length;
+  document.getElementById('stat-accepted').textContent = execs.filter(e => e.status === 'accepted').length;
+  document.getElementById('stat-rejected').textContent = execs.filter(e => e.status === 'rejected').length;
+}
+
+async function loadExecutions() {
+  const status = document.getElementById('status-filter').value;
+  const url = '/execution/list' + (status ? `?status=${status}` : '');
+  const data = await apiFetch(url);
+  const execs = data || [];
+  const container = document.getElementById('executions-table');
+  if (!execs.length) {
+    container.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><div class="empty-state-title">No requests yet</div><div class="empty-state-sub">Submit your first workflow request above</div></div>';
+    return;
+  }
+  container.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Title</th><th>Workflow</th><th>Status</th><th>Step</th><th>Submitted</th><th>Action</th></tr></thead>
+    <tbody>${execs.map(e => `
+      <tr>
+        <td><strong>${e.title || '—'}</strong></td>
+        <td>${e.workflow_name || '—'}</td>
+        <td>${statusBadge(e.status)}</td>
+        <td class="text-mono" style="font-size:12px">Step ${e.current_step}</td>
+        <td class="text-muted">${fmtDate(e.created_at)}</td>
+        <td><button class="btn btn-sm btn-secondary" onclick="viewDetail(${e.id})">View</button></td>
+      </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+function viewDetail(id) { window.location.href = `execution_detail.html?id=${id}`; }
+
+// Handle hash navigation
+if (window.location.hash === '#submit') {
+  document.getElementById('submit-section').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>

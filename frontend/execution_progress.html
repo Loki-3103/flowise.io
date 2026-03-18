@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowise — My Requests</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">flowise</div><div class="logo-sub">Workflow System</div></div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="sidebar-avatar"></div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-user-name"></div>
+          <div class="sidebar-user-role" id="sidebar-user-role"></div>
+        </div>
+        <button class="logout-btn" onclick="logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">My Requests</span>
+      <div class="topbar-actions">
+        <div style="position:relative" id="notif-wrap">
+          <button class="notif-btn" id="notif-btn" onclick="toggleNotifPanel()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+          </button>
+        </div>
+        <button class="btn btn-primary" onclick="window.location.href='dashboard.html#submit'">+ New Request</button>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="rs-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-value" id="rs-active">—</div></div>
+        <div class="stat-card"><div class="stat-label">Accepted</div><div class="stat-value" id="rs-accepted">—</div></div>
+        <div class="stat-card"><div class="stat-label">Rejected</div><div class="stat-value" id="rs-rejected">—</div></div>
+      </div>
+
+      <div class="filter-bar">
+        <select class="form-control" style="width:150px" id="sf" onchange="loadRequests()">
+          <option value="">All status</option>
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="accepted">Accepted</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+
+      <div id="requests-list"><div class="loading-overlay"><span class="spinner"></span></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/utils.js"></script>
+<script>
+const user = requireAuth();
+if (user) { initSidebar('execution_progress'); loadNotifCount(); loadRequests(); }
+
+async function loadRequests() {
+  const sf = document.getElementById('sf').value;
+  const url = '/execution/list' + (sf ? `?status=${sf}` : '');
+  const data = await apiFetch(url) || [];
+
+  document.getElementById('rs-total').textContent = data.length;
+  document.getElementById('rs-active').textContent = data.filter(e => ['active','pending'].includes(e.status)).length;
+  document.getElementById('rs-accepted').textContent = data.filter(e => e.status === 'accepted').length;
+  document.getElementById('rs-rejected').textContent = data.filter(e => e.status === 'rejected').length;
+
+  const container = document.getElementById('requests-list');
+  if (!data.length) {
+    container.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg><div class="empty-state-title">No requests found</div><div class="empty-state-sub">Submit a new request from the dashboard</div></div>';
+    return;
+  }
+
+  container.innerHTML = data.map(e => `
+    <div class="card mb-16" style="cursor:pointer" onclick="window.location.href='execution_detail.html?id=${e.id}'">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div style="font-size:15px;font-weight:600;margin-bottom:3px">${e.title || 'Untitled'}</div>
+          <div class="text-muted">${e.workflow_name} · Submitted ${fmtDate(e.created_at)}</div>
+        </div>
+        <div class="flex-gap">
+          ${statusBadge(e.status)}
+          <span class="text-muted text-mono" style="font-size:12px">Step ${e.current_step}</span>
+        </div>
+      </div>
+      <div style="height:4px;background:var(--gray-100);border-radius:2px;overflow:hidden">
+        <div style="height:100%;background:${e.status==='accepted'?'#22c55e':e.status==='rejected'?'#ef4444':'#0a0a0a'};border-radius:2px;width:${Math.min((e.current_step / 4) * 100, 100)}%;transition:width 0.3s"></div>
+      </div>
+    </div>`).join('');
+}
+</script>
+</body>
+</html>

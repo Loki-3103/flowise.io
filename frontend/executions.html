@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowise — Executions</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">flowise</div><div class="logo-sub">Workflow System</div></div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="sidebar-avatar"></div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-user-name"></div>
+          <div class="sidebar-user-role" id="sidebar-user-role"></div>
+        </div>
+        <button class="logout-btn" onclick="logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">Execution Management</span>
+      <div class="topbar-actions">
+        <div style="position:relative" id="notif-wrap">
+          <button class="notif-btn" id="notif-btn" onclick="toggleNotifPanel()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="st-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" id="st-active">—</div></div>
+        <div class="stat-card"><div class="stat-label">Pending Review</div><div class="stat-value" id="st-pending">—</div></div>
+        <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" id="st-done">—</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">All Executions</div><div class="card-subtitle">Approve or reject pending requests</div></div>
+        </div>
+        <div class="filter-bar">
+          <div class="search-input-wrap" style="flex:1">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" class="form-control search-input" id="search" placeholder="Search by title or workflow..." oninput="loadExecs()">
+          </div>
+          <select class="form-control" style="width:140px" id="status-f" onchange="loadExecs()">
+            <option value="">All status</option>
+            <option value="active">Active</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <div id="exec-table"><div class="loading-overlay"><span class="spinner"></span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Approval Modal -->
+<div id="approve-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="approve-modal-title">Review Request</span>
+      <button class="modal-close" onclick="closeApprove()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="approve-detail"></div>
+      <div class="divider"></div>
+      <div class="form-group">
+        <label class="form-label">Note (optional)</label>
+        <textarea class="form-control" id="approve-note" placeholder="Add a comment or reason..."></textarea>
+      </div>
+      <div id="approve-alert"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeApprove()">Cancel</button>
+      <button class="btn btn-danger" onclick="doAction('reject')" id="reject-btn">Reject</button>
+      <button class="btn btn-success" onclick="doAction('approve')" id="approve-btn">Approve</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/utils.js"></script>
+<script>
+const user = requireAuth(['developer', 'admin']);
+if (user) { initSidebar('executions'); loadNotifCount(); loadExecs(); }
+
+let currentExecId = null;
+
+async function loadExecs() {
+  const search = document.getElementById('search').value;
+  const status = document.getElementById('status-f').value;
+  let url = '/execution/list?';
+  if (status) url += `status=${status}&`;
+  if (search) url += `search=${encodeURIComponent(search)}`;
+  const data = await apiFetch(url);
+  const execs = data || [];
+
+  document.getElementById('st-total').textContent = execs.length;
+  document.getElementById('st-active').textContent = execs.filter(e=>e.status==='active').length;
+  document.getElementById('st-pending').textContent = execs.filter(e=>e.status==='pending').length;
+  document.getElementById('st-done').textContent = execs.filter(e=>['accepted','rejected'].includes(e.status)).length;
+
+  const container = document.getElementById('exec-table');
+  if (!execs.length) {
+    container.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><div class="empty-state-title">No executions found</div><div class="empty-state-sub">Executions will appear here once users submit requests</div></div>';
+    return;
+  }
+  container.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Title</th><th>Workflow</th><th>Submitted By</th><th>Status</th><th>Step</th><th>Date</th><th>Actions</th></tr></thead>
+    <tbody>${execs.map(e => `<tr>
+      <td><strong>${e.title || '—'}</strong></td>
+      <td>${e.workflow_name || '—'}</td>
+      <td>${e.submitter_name || e.submitter_email || '—'}</td>
+      <td>${statusBadge(e.status)}</td>
+      <td class="text-mono" style="font-size:12px">Step ${e.current_step}</td>
+      <td class="text-muted">${fmtDate(e.created_at)}</td>
+      <td>
+        <div class="flex-gap">
+          <button class="btn btn-sm btn-secondary" onclick="viewExec(${e.id})">Detail</button>
+          ${['active','pending'].includes(e.status) ? `<button class="btn btn-sm btn-primary" onclick="openApprove(${e.id})">Review</button>` : ''}
+        </div>
+      </td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+function viewExec(id) { window.location.href = `execution_detail.html?id=${id}`; }
+
+async function openApprove(id) {
+  currentExecId = id;
+  document.getElementById('approve-note').value = '';
+  document.getElementById('approve-alert').innerHTML = '';
+  const ex = await apiFetch(`/execution/status/${id}`);
+  document.getElementById('approve-modal-title').textContent = `Review: ${ex.title}`;
+
+  const inputsHtml = Object.entries(ex.inputs || {}).map(([k,v]) =>
+    `<div style="display:flex;gap:8px;margin-bottom:6px"><span style="font-weight:500;min-width:120px;color:#666;font-size:12px;text-transform:uppercase">${k}</span><span style="font-size:13px">${v}</span></div>`
+  ).join('');
+
+  const stepsHtml = (ex.steps || []).map(s =>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <span style="width:22px;height:22px;border-radius:50%;background:${s.step_order < ex.current_step ? '#0a0a0a' : s.step_order === ex.current_step ? '#fff' : '#fff'};border:2px solid ${s.step_order <= ex.current_step ? '#0a0a0a' : '#e5e5e5'};display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${s.step_order < ex.current_step ? '#fff' : '#333'};flex-shrink:0">${s.step_order}</span>
+      <span style="font-size:13px;${s.step_order === ex.current_step ? 'font-weight:600' : 'color:#888'}">${s.name}</span>
+      ${s.step_order === ex.current_step ? '<span style="font-size:11px;background:#eff6ff;color:#2563eb;padding:2px 7px;border-radius:20px">Current</span>' : ''}
+    </div>`
+  ).join('');
+
+  document.getElementById('approve-detail').innerHTML = `
+    <div style="margin-bottom:12px">
+      <span class="text-muted">Submitted by </span><strong>${ex.submitter_name}</strong>
+      <span class="text-muted"> on ${fmtDateTime(ex.created_at)}</span>
+    </div>
+    ${stepsHtml ? `<div style="margin-bottom:16px;padding:12px;background:#f5f5f5;border-radius:6px">${stepsHtml}</div>` : ''}
+    ${inputsHtml ? `<div style="margin-bottom:4px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#888;font-weight:600">Submitted Data</div><div style="padding:12px;background:#f9f9f9;border-radius:6px">${inputsHtml}</div>` : ''}
+  `;
+  document.getElementById('approve-modal').style.display = 'flex';
+}
+
+async function doAction(action) {
+  const note = document.getElementById('approve-note').value;
+  const btn = action === 'approve' ? document.getElementById('approve-btn') : document.getElementById('reject-btn');
+  btn.disabled = true; btn.textContent = action === 'approve' ? 'Approving...' : 'Rejecting...';
+  try {
+    await apiFetch(`/execution/${action}`, {
+      method: 'POST',
+      body: JSON.stringify({ execution_id: currentExecId, note })
+    });
+    closeApprove();
+    loadExecs();
+  } catch(e) {
+    showAlert('approve-alert', e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = action === 'approve' ? 'Approve' : 'Reject';
+  }
+}
+
+function closeApprove() { document.getElementById('approve-modal').style.display = 'none'; }
+</script>
+</body>
+</html>

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowise — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">flowise</div><div class="logo-sub">Workflow System</div></div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="sidebar-avatar"></div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-user-name"></div>
+          <div class="sidebar-user-role" id="sidebar-user-role"></div>
+        </div>
+        <button class="logout-btn" onclick="logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">System Overview</span>
+      <div class="topbar-actions">
+        <div style="position:relative" id="notif-wrap">
+          <button class="notif-btn" id="notif-btn" onclick="toggleNotifPanel()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+          </button>
+        </div>
+        <button class="btn btn-primary" onclick="openAddUser()">+ Add User</button>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <!-- Tab Nav -->
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--gray-100);margin-bottom:24px">
+        <button class="tab-btn active" id="tab-overview" onclick="switchTab('overview')">Overview</button>
+        <button class="tab-btn" id="tab-users" onclick="switchTab('users')">Users</button>
+        <button class="tab-btn" id="tab-logs" onclick="switchTab('logs')">Audit Logs</button>
+      </div>
+
+      <!-- OVERVIEW TAB -->
+      <div id="section-overview">
+        <div class="stats-grid" id="stat-grid">
+          <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="s-users">—</div></div>
+          <div class="stat-card"><div class="stat-label">Workflows</div><div class="stat-value" id="s-wf">—</div></div>
+          <div class="stat-card"><div class="stat-label">Executions</div><div class="stat-value" id="s-ex">—</div></div>
+          <div class="stat-card"><div class="stat-label">Accepted</div><div class="stat-value" id="s-acc">—</div></div>
+          <div class="stat-card"><div class="stat-label">Rejected</div><div class="stat-value" id="s-rej">—</div></div>
+          <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" id="s-act">—</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Recent Executions</div></div>
+          <div id="recent-table"><div class="loading-overlay"><span class="spinner"></span></div></div>
+        </div>
+      </div>
+
+      <!-- USERS TAB -->
+      <div id="section-users" style="display:none">
+        <div class="card">
+          <div class="card-header"><div class="card-title">All Users</div></div>
+          <div id="users-table"><div class="loading-overlay"><span class="spinner"></span></div></div>
+        </div>
+      </div>
+
+      <!-- LOGS TAB -->
+      <div id="section-logs" style="display:none">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Audit Logs</div><div class="card-subtitle">Last 50 system events</div></div>
+          <div id="logs-table"><div class="loading-overlay"><span class="spinner"></span></div></div>
+        </div>
+      </div>
+
+      <div id="alert-area"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Add User Modal -->
+<div id="user-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add User</span>
+      <button class="modal-close" onclick="closeUserModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="user-modal-alert"></div>
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input type="text" class="form-control" id="u-name" placeholder="Jane Doe">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email *</label>
+        <input type="email" class="form-control" id="u-email" placeholder="jane@company.com">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Password *</label>
+          <input type="password" class="form-control" id="u-password" placeholder="Min 6 characters">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Role *</label>
+          <select class="form-control" id="u-role">
+            <option value="user">User</option>
+            <option value="developer">Developer</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createUser()">Create User</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.tab-btn {
+  padding: 10px 20px; background: none; border: none; cursor: pointer;
+  font-size: 13.5px; font-family: 'DM Sans', sans-serif; font-weight: 500;
+  color: var(--gray-400); border-bottom: 2px solid transparent;
+  margin-bottom: -1px; transition: color 0.15s, border-color 0.15s;
+}
+.tab-btn:hover { color: var(--gray-700); }
+.tab-btn.active { color: var(--gray-900); border-bottom-color: var(--gray-900); }
+</style>
+
+<script src="js/utils.js"></script>
+<script>
+const user = requireAuth(['admin']);
+if (user) { initSidebar('admin'); loadNotifCount(); loadOverview(); }
+
+let overviewData = null;
+
+async function loadOverview() {
+  const data = await apiFetch('/admin/overview');
+  overviewData = data;
+
+  document.getElementById('s-users').textContent = data.total_users;
+  document.getElementById('s-wf').textContent = data.total_workflows;
+  document.getElementById('s-ex').textContent = data.total_executions;
+
+  const byStatus = {};
+  (data.by_status || []).forEach(r => byStatus[r.status] = r.cnt);
+  document.getElementById('s-acc').textContent = byStatus['accepted'] || 0;
+  document.getElementById('s-rej').textContent = byStatus['rejected'] || 0;
+  document.getElementById('s-act').textContent = byStatus['active'] || 0;
+
+  renderRecent(data.recent_executions || []);
+  renderUsers(data.users || []);
+  renderLogs(data.logs || []);
+}
+
+function renderRecent(rows) {
+  if (!rows.length) {
+    document.getElementById('recent-table').innerHTML = '<div class="empty-state"><div class="empty-state-title">No executions yet</div></div>';
+    return;
+  }
+  document.getElementById('recent-table').innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Title</th><th>Workflow</th><th>Submitted By</th><th>Status</th><th>Date</th><th></th></tr></thead>
+    <tbody>${rows.map(e => `<tr>
+      <td><strong>${e.title || '—'}</strong></td>
+      <td>${e.workflow_name || '—'}</td>
+      <td>${e.submitter || '—'}</td>
+      <td>${statusBadge(e.status)}</td>
+      <td class="text-muted">${fmtDate(e.created_at)}</td>
+      <td><button class="btn btn-sm btn-secondary" onclick="window.location.href='execution_detail.html?id=${e.id}'">View</button></td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function renderUsers(rows) {
+  if (!rows.length) {
+    document.getElementById('users-table').innerHTML = '<div class="empty-state"><div class="empty-state-title">No users</div></div>';
+    return;
+  }
+  document.getElementById('users-table').innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th></tr></thead>
+    <tbody>${rows.map(u => `<tr>
+      <td><strong>${u.full_name || '—'}</strong></td>
+      <td class="text-mono" style="font-size:12px">${u.email}</td>
+      <td>${roleBadge(u.role)}</td>
+      <td class="text-muted">${fmtDate(u.created_at)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function renderLogs(rows) {
+  if (!rows.length) {
+    document.getElementById('logs-table').innerHTML = '<div class="empty-state"><div class="empty-state-title">No logs</div></div>';
+    return;
+  }
+  document.getElementById('logs-table').innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Action</th><th>Step</th><th>Execution</th><th>By</th><th>Note</th><th>Time</th></tr></thead>
+    <tbody>${rows.map(l => `<tr>
+      <td><span class="badge badge-${l.action === 'approved' ? 'accepted' : l.action === 'rejected' ? 'rejected' : 'active'}">${l.action}</span></td>
+      <td class="text-muted">${l.step_name || '—'}</td>
+      <td>${l.execution_title || `#${l.execution_id}`}</td>
+      <td>${l.full_name || '—'}</td>
+      <td class="text-muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.note || '—'}</td>
+      <td class="text-muted">${fmtDateTime(l.created_at)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function switchTab(tab) {
+  ['overview','users','logs'].forEach(t => {
+    document.getElementById(`section-${t}`).style.display = t === tab ? 'block' : 'none';
+    document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+  });
+  // Reload if hash navigation
+  if (tab === 'users' && overviewData) renderUsers(overviewData.users || []);
+  if (tab === 'logs' && overviewData) renderLogs(overviewData.logs || []);
+}
+
+// Handle hash
+if (window.location.hash === '#users') switchTab('users');
+if (window.location.hash === '#logs') switchTab('logs');
+
+function openAddUser() { document.getElementById('user-modal').style.display = 'flex'; }
+function closeUserModal() { document.getElementById('user-modal').style.display = 'none'; }
+
+async function createUser() {
+  const email = document.getElementById('u-email').value.trim();
+  const password = document.getElementById('u-password').value;
+  const role = document.getElementById('u-role').value;
+  const full_name = document.getElementById('u-name').value.trim();
+
+  if (!email || !password) { showAlert('user-modal-alert', 'Email and password are required.'); return; }
+  if (password.length < 6) { showAlert('user-modal-alert', 'Password must be at least 6 characters.'); return; }
+
+  try {
+    await apiFetch('/admin/users', { method: 'POST', body: JSON.stringify({ email, password, role, full_name }) });
+    closeUserModal();
+    loadOverview();
+    showAlert('alert-area', 'User created successfully.', 'success');
+  } catch(e) {
+    showAlert('user-modal-alert', e.message);
+  }
+}
+</script>
+</body>
+</html>

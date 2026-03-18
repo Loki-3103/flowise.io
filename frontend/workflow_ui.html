@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowise — Workflows</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">flowise</div><div class="logo-sub">Workflow System</div></div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="sidebar-avatar"></div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-user-name"></div>
+          <div class="sidebar-user-role" id="sidebar-user-role"></div>
+        </div>
+        <button class="logout-btn" onclick="logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">Workflows</span>
+      <div class="topbar-actions">
+        <div style="position:relative" id="notif-wrap">
+          <button class="notif-btn" id="notif-btn" onclick="toggleNotifPanel()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+          </button>
+        </div>
+        <button class="btn btn-primary" onclick="openCreate()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Workflow
+        </button>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <div class="filter-bar">
+        <div class="search-input-wrap">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="form-control search-input" id="search" placeholder="Search workflows..." oninput="loadWorkflows()">
+        </div>
+      </div>
+      <div class="card">
+        <div id="wf-table"><div class="loading-overlay"><span class="spinner"></span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Workflow Modal -->
+<div id="wf-modal" class="modal-overlay" style="display:none">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">New Workflow</span>
+      <button class="modal-close" onclick="closeModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-alert"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Workflow Name *</label>
+          <input type="text" class="form-control" id="wf-name" placeholder="e.g. Expense Approval">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input type="text" class="form-control" id="wf-desc" placeholder="Brief description">
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="flex-between mb-16">
+        <div class="card-title">Workflow Steps</div>
+        <button class="btn btn-sm btn-secondary" onclick="addStep()">+ Add Step</button>
+      </div>
+      <div id="steps-builder"></div>
+
+      <div class="divider"></div>
+      <div class="flex-between mb-16">
+        <div class="card-title">Input Schema</div>
+        <button class="btn btn-sm btn-secondary" onclick="addField()">+ Add Field</button>
+      </div>
+      <div id="schema-builder"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveWorkflow()">Save Workflow</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/utils.js"></script>
+<script>
+const user = requireAuth(['developer', 'admin']);
+if (user) { initSidebar('workflow_ui'); loadNotifCount(); loadWorkflows(); }
+
+let editId = null;
+let stepCount = 0;
+let fieldCount = 0;
+
+async function loadWorkflows() {
+  const search = document.getElementById('search').value;
+  const url = '/workflow/list' + (search ? `?search=${encodeURIComponent(search)}` : '');
+  const data = await apiFetch(url);
+  const wfs = data || [];
+  const container = document.getElementById('wf-table');
+  if (!wfs.length) {
+    container.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg><div class="empty-state-title">No workflows found</div><div class="empty-state-sub">Create your first workflow to get started</div></div>';
+    return;
+  }
+  container.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Name</th><th>Description</th><th>Created By</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${wfs.map(w => `<tr>
+      <td><strong>${w.name}</strong></td>
+      <td class="text-muted">${w.description || '—'}</td>
+      <td>${w.creator_name || '—'}</td>
+      <td><span class="badge ${w.is_active ? 'badge-accepted' : 'badge-pending'}">${w.is_active ? 'active' : 'inactive'}</span></td>
+      <td>
+        <div class="flex-gap">
+          <button class="btn btn-sm btn-secondary" onclick="editWorkflow(${w.id})">Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteWorkflow(${w.id}, '${w.name}')">Delete</button>
+        </div>
+      </td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+function openCreate() {
+  editId = null;
+  document.getElementById('modal-title').textContent = 'New Workflow';
+  document.getElementById('wf-name').value = '';
+  document.getElementById('wf-desc').value = '';
+  document.getElementById('steps-builder').innerHTML = '';
+  document.getElementById('schema-builder').innerHTML = '';
+  document.getElementById('modal-alert').innerHTML = '';
+  stepCount = 0; fieldCount = 0;
+  addStep(); addStep(); // default 2 steps
+  addField(); // default 1 field
+  document.getElementById('wf-modal').style.display = 'flex';
+}
+
+async function editWorkflow(id) {
+  editId = id;
+  const wf = await apiFetch(`/workflow/${id}`);
+  document.getElementById('modal-title').textContent = 'Edit Workflow';
+  document.getElementById('wf-name').value = wf.name;
+  document.getElementById('wf-desc').value = wf.description || '';
+  document.getElementById('modal-alert').innerHTML = '';
+  stepCount = 0; fieldCount = 0;
+  document.getElementById('steps-builder').innerHTML = '';
+  document.getElementById('schema-builder').innerHTML = '';
+  (wf.steps || []).forEach(s => addStep(s));
+  (wf.schema || []).forEach(f => addField(f));
+  document.getElementById('wf-modal').style.display = 'flex';
+}
+
+function addStep(data = {}) {
+  stepCount++;
+  const id = `step-${stepCount}`;
+  const div = document.createElement('div');
+  div.className = 'step-builder-item';
+  div.id = id;
+  div.innerHTML = `
+    <div class="step-builder-header">
+      <span class="step-number">Step ${stepCount}</span>
+      <button class="btn btn-sm btn-danger" onclick="document.getElementById('${id}').remove()">Remove</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Step Name</label>
+        <input type="text" class="form-control step-name" placeholder="e.g. Manager Approval" value="${data.name || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select class="form-control step-role">
+          <option value="user" ${data.role==='user'?'selected':''}>User</option>
+          <option value="developer" ${data.role==='developer'?'selected':''}>Developer</option>
+          <option value="admin" ${data.role==='admin'?'selected':''}>Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Type</label>
+        <select class="form-control step-type">
+          <option value="approval" ${data.step_type==='approval'?'selected':''}>Approval</option>
+          <option value="task" ${data.step_type==='task'?'selected':''}>Task</option>
+          <option value="notification" ${data.step_type==='notification'?'selected':''}>Notification</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Assignee Email (optional)</label>
+        <input type="email" class="form-control step-assignee" placeholder="assignee@company.com" value="${data.assignee_email || ''}">
+      </div>
+    </div>`;
+  document.getElementById('steps-builder').appendChild(div);
+}
+
+function addField(data = {}) {
+  fieldCount++;
+  const id = `field-${fieldCount}`;
+  const div = document.createElement('div');
+  div.className = 'step-builder-item';
+  div.id = id;
+  div.innerHTML = `
+    <div class="step-builder-header">
+      <span class="step-number">Field ${fieldCount}</span>
+      <button class="btn btn-sm btn-danger" onclick="document.getElementById('${id}').remove()">Remove</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Field Name</label>
+        <input type="text" class="form-control field-name" placeholder="e.g. amount" value="${data.field_name || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type</label>
+        <select class="form-control field-type">
+          <option value="string" ${data.field_type==='string'?'selected':''}>String</option>
+          <option value="number" ${data.field_type==='number'?'selected':''}>Number</option>
+          <option value="boolean" ${data.field_type==='boolean'?'selected':''}>Boolean</option>
+          <option value="dropdown" ${data.field_type==='dropdown'?'selected':''}>Dropdown</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Allowed Values (comma-separated, for dropdown)</label>
+        <input type="text" class="form-control field-allowed" placeholder="Option A,Option B,Option C" value="${data.allowed_values || ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Required</label>
+        <select class="form-control field-required">
+          <option value="true" ${data.is_required!==false?'selected':''}>Yes</option>
+          <option value="false" ${data.is_required===false?'selected':''}>No</option>
+        </select>
+      </div>
+    </div>`;
+  document.getElementById('schema-builder').appendChild(div);
+}
+
+async function saveWorkflow() {
+  const name = document.getElementById('wf-name').value.trim();
+  if (!name) { showAlert('modal-alert', 'Workflow name is required.'); return; }
+
+  const steps = [];
+  document.querySelectorAll('#steps-builder .step-builder-item').forEach(el => {
+    steps.push({
+      name: el.querySelector('.step-name').value.trim(),
+      role: el.querySelector('.step-role').value,
+      step_type: el.querySelector('.step-type').value,
+      assignee_email: el.querySelector('.step-assignee').value.trim()
+    });
+  });
+
+  const schema = [];
+  document.querySelectorAll('#schema-builder .step-builder-item').forEach(el => {
+    schema.push({
+      field_name: el.querySelector('.field-name').value.trim(),
+      field_type: el.querySelector('.field-type').value,
+      allowed_values: el.querySelector('.field-allowed').value.trim(),
+      is_required: el.querySelector('.field-required').value === 'true'
+    });
+  });
+
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    const payload = { name, description: document.getElementById('wf-desc').value, steps, schema };
+    if (editId) {
+      await apiFetch(`/workflow/${editId}`, { method: 'PUT', body: JSON.stringify(payload) });
+    } else {
+      await apiFetch('/workflow/create', { method: 'POST', body: JSON.stringify(payload) });
+    }
+    closeModal();
+    loadWorkflows();
+  } catch (e) {
+    showAlert('modal-alert', e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Workflow';
+  }
+}
+
+async function deleteWorkflow(id, name) {
+  if (!confirm(`Delete workflow "${name}"? This cannot be undone.`)) return;
+  await apiFetch(`/workflow/${id}`, { method: 'DELETE' });
+  loadWorkflows();
+}
+
+function closeModal() { document.getElementById('wf-modal').style.display = 'none'; }
+</script>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowise — Execution Detail</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">flowise</div><div class="logo-sub">Workflow System</div></div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="sidebar-avatar"></div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-user-name"></div>
+          <div class="sidebar-user-role" id="sidebar-user-role"></div>
+        </div>
+        <button class="logout-btn" onclick="logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <div class="flex-gap">
+        <button class="btn btn-secondary btn-sm" onclick="history.back()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+        <span class="topbar-title" id="page-title">Execution Detail</span>
+      </div>
+      <div class="topbar-actions">
+        <div style="position:relative" id="notif-wrap">
+          <button class="notif-btn" id="notif-btn" onclick="toggleNotifPanel()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <div id="detail-content"><div class="loading-overlay"><span class="spinner"></span></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/utils.js"></script>
+<script>
+const user = requireAuth();
+const params = new URLSearchParams(window.location.search);
+const execId = params.get('id');
+
+if (user) {
+  initSidebar('execution_progress');
+  loadNotifCount();
+  if (execId) loadDetail();
+}
+
+async function loadDetail() {
+  const ex = await apiFetch(`/execution/status/${execId}`);
+  document.getElementById('page-title').textContent = ex.title || 'Execution Detail';
+
+  const steps = ex.steps || [];
+  const stepsHtml = `<div class="step-progress">${steps.map(s => {
+    let cls = s.step_order < ex.current_step ? 'completed' : s.step_order === ex.current_step ? 'current' : '';
+    let label = s.step_order < ex.current_step ? '✓' : s.step_order;
+    return `<div class="step-item">
+      <div class="step-dot ${cls}">${label}</div>
+      <div class="step-label ${s.step_order === ex.current_step ? 'current' : ''}">${s.name}</div>
+    </div>`;
+  }).join('')}</div>`;
+
+  const inputsHtml = Object.entries(ex.inputs || {}).length
+    ? `<div class="table-wrap"><table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>${Object.entries(ex.inputs).map(([k,v]) => `<tr><td class="text-mono" style="font-size:12px">${k}</td><td>${v}</td></tr>`).join('')}</tbody>
+      </table></div>`
+    : '<p class="text-muted">No inputs recorded.</p>';
+
+  const logs = ex.logs || [];
+  const logsHtml = logs.length
+    ? `<div class="log-timeline">${logs.map(l => `
+        <div class="log-item">
+          <div class="log-dot ${l.action}">
+            ${l.action==='approved'?'✓':l.action==='rejected'?'✗':l.action==='submitted'?'→':'·'}
+          </div>
+          <div class="log-content">
+            <div class="log-action">${l.action}</div>
+            <div class="log-meta">${l.full_name || 'System'} · ${l.step_name || ''} · ${fmtDateTime(l.created_at)}</div>
+            ${l.note ? `<div class="log-note">"${l.note}"</div>` : ''}
+          </div>
+        </div>`).join('')}
+      </div>`
+    : '<p class="text-muted">No log entries.</p>';
+
+  const canCancel = ['active','pending'].includes(ex.status) && (user.role !== 'user' || ex.user_id === user.id);
+  const canApprove = ['active','pending'].includes(ex.status) && ['admin','developer'].includes(user.role);
+
+  document.getElementById('detail-content').innerHTML = `
+    <div class="flex-between mb-20">
+      <div>
+        <h2 style="font-size:20px;font-weight:700;margin-bottom:4px">${ex.title}</h2>
+        <div class="text-muted">${ex.workflow_name} · Submitted by ${ex.submitter_name} · ${fmtDate(ex.created_at)}</div>
+      </div>
+      <div class="flex-gap">
+        ${statusBadge(ex.status)}
+        ${canApprove ? `<button class="btn btn-success btn-sm" onclick="quickApprove()">Approve</button><button class="btn btn-danger btn-sm" onclick="quickReject()">Reject</button>` : ''}
+        ${canCancel ? `<button class="btn btn-secondary btn-sm" onclick="cancelExec()">Cancel</button>` : ''}
+      </div>
+    </div>
+
+    <div class="card mb-20">
+      <div class="card-header"><div class="card-title">Progress</div></div>
+      ${stepsHtml}
+    </div>
+
+    <div class="grid-2 mb-20">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Submitted Data</div></div>
+        ${inputsHtml}
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Details</div></div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div><div class="text-muted" style="margin-bottom:3px">Execution ID</div><div class="text-mono">#${ex.id}</div></div>
+          <div><div class="text-muted" style="margin-bottom:3px">Workflow</div><div>${ex.workflow_name}</div></div>
+          <div><div class="text-muted" style="margin-bottom:3px">Status</div>${statusBadge(ex.status)}</div>
+          <div><div class="text-muted" style="margin-bottom:3px">Current Step</div><div>Step ${ex.current_step} of ${steps.length}</div></div>
+          <div><div class="text-muted" style="margin-bottom:3px">Last Updated</div><div>${fmtDateTime(ex.updated_at)}</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Activity Log</div></div>
+      ${logsHtml}
+    </div>
+    <div id="action-alert" style="margin-top:12px"></div>
+  `;
+}
+
+async function quickApprove() {
+  const note = prompt('Add a note (optional):') || '';
+  try {
+    await apiFetch('/execution/approve', { method: 'POST', body: JSON.stringify({ execution_id: parseInt(execId), note }) });
+    loadDetail();
+  } catch(e) { showAlert('action-alert', e.message); }
+}
+async function quickReject() {
+  const note = prompt('Reason for rejection (optional):') || '';
+  try {
+    await apiFetch('/execution/reject', { method: 'POST', body: JSON.stringify({ execution_id: parseInt(execId), note }) });
+    loadDetail();
+  } catch(e) { showAlert('action-alert', e.message); }
+}
+async function cancelExec() {
+  if (!confirm('Cancel this execution?')) return;
+  try {
+    await apiFetch(`/execution/cancel/${execId}`, { method: 'POST' });
+    loadDetail();
+  } catch(e) { showAlert('action-alert', e.message); }
+}
+</script>
+</body>
+</html>

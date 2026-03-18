@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowise — Notifications</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">flowise</div><div class="logo-sub">Workflow System</div></div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="sidebar-avatar"></div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-user-name"></div>
+          <div class="sidebar-user-role" id="sidebar-user-role"></div>
+        </div>
+        <button class="logout-btn" onclick="logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">Notifications</span>
+      <div class="topbar-actions">
+        <div style="position:relative" id="notif-wrap">
+          <button class="notif-btn" id="notif-btn" onclick="toggleNotifPanel()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+          </button>
+        </div>
+        <button class="btn btn-secondary" onclick="markAll()">Mark all read</button>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <div class="card" style="max-width:640px">
+        <div id="notifs-list"><div class="loading-overlay"><span class="spinner"></span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/utils.js"></script>
+<script>
+const user = requireAuth();
+if (user) { initSidebar('notifications'); loadNotifCount(); loadNotifications(); }
+
+async function loadNotifications() {
+  const data = await apiFetch('/notifications/') || [];
+  const container = document.getElementById('notifs-list');
+  if (!data.length) {
+    container.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><div class="empty-state-title">No notifications</div><div class="empty-state-sub">You are all caught up</div></div>';
+    return;
+  }
+  container.innerHTML = data.map(n => `
+    <div class="notif-item ${n.is_read ? '' : 'unread'}" style="border-bottom:1px solid var(--gray-50);padding:16px;" onclick="readAndView(${n.id}, ${n.execution_id})">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="width:8px;height:8px;border-radius:50%;background:${n.is_read ? 'var(--gray-200)' : 'var(--status-active)'};margin-top:5px;flex-shrink:0"></div>
+        <div style="flex:1">
+          <div class="notif-msg">${n.message}</div>
+          <div class="notif-time" style="margin-top:6px">${fmtDateTime(n.created_at)}</div>
+        </div>
+        ${n.execution_id ? `<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();window.location.href='execution_detail.html?id=${n.execution_id}'">View</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function readAndView(id, execId) {
+  await apiFetch('/notifications/mark-read', { method: 'POST', body: JSON.stringify({ id }) });
+  if (execId) window.location.href = `execution_detail.html?id=${execId}`;
+  else loadNotifications();
+}
+
+async function markAll() {
+  await apiFetch('/notifications/mark-read', { method: 'POST', body: JSON.stringify({}) });
+  loadNotifications();
+  loadNotifCount();
+}
+</script>
+</body>
+</html>
