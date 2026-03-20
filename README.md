@@ -2,7 +2,7 @@
 
 A full-stack workflow approval application built with Flask (Python) + PostgreSQL backend and plain HTML/CSS/JS frontend.
 
-Demo video --> [Flowence Video Link ](https://drive.google.com/file/d/1SroLALPwhyzG3crPZux4vtAENHMxwwjI/view?usp=sharing)
+Demo video --> [Flowence Video Link ](https://drive.google.com/file/d/1N49w6pWcexuqeXoDzwA48KjE8ENtk7w7/view?usp=sharing)
 
 ## Project Structure
 
